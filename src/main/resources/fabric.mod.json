@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "id": "tntautofill",
+  "version": "${version}",
+  "name": "HolyWorld TNT Auto-Fill",
+  "description": "Client-side: when you manually place a TNT cannon, instantly loads TNT B into it and places a redstone block beside it. No keybind needed.",
+  "authors": ["User"],
+  "license": "MIT",
+  "environment": "client",
+  "entrypoints": {
+    "client": [
+      "ru.holyworld.tntautofill.HolyWorldTntAutofill"
+    ]
+  },
+  "depends": {
+    "fabricloader": ">=0.16.9",
+    "minecraft": "~1.21.4",
+    "java": ">=21",
+    "fabric-api": "*"
+  }
+}
