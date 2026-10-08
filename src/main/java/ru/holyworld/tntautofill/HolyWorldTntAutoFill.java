@@ -38,6 +38,9 @@ public class HolyWorldTntAutofill implements ClientModInitializer {
 
     @Override
     public void onInitializeClient() {
+        ChatCapture.init();
+        SessionLogger.init();
+        
         CONFIG = Config.load();
 
         // Включает/выключает автозарядку когда угодно, без переустановки мода -
