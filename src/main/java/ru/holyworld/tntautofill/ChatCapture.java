@@ -1,25 +1,45 @@
 package ru.holyworld.tntautofill;
 
+import net.fabricmc.fabric.api.client.message.v1.ClientReceiveMessageEvents;
 import net.fabricmc.fabric.api.client.message.v1.ClientSendMessageEvents;
+
+import java.util.concurrent.ConcurrentLinkedQueue;
 
 public class ChatCapture {
 
-    private static volatile String last = null;
+    private static final ConcurrentLinkedQueue<String> outgoing = new ConcurrentLinkedQueue<>();
+    private static final ConcurrentLinkedQueue<String> incoming = new ConcurrentLinkedQueue<>();
 
     public static void init() {
         ClientSendMessageEvents.ALLOW_CHAT.register(msg -> {
-            last = msg;
+            outgoing.add(msg);
             return true;
         });
         ClientSendMessageEvents.ALLOW_COMMAND.register(cmd -> {
-            last = "/" + cmd;
+            outgoing.add("/" + cmd);
             return true;
+        });
+        ClientReceiveMessageEvents.GAME.register((message, overlay) -> {
+            incoming.add(message.getString());
+        });
+        ClientReceiveMessageEvents.CHAT.register((message, signed, sender, params, ts) -> {
+            incoming.add(message.getString());
         });
     }
 
-    public static String poll() {
-        String v = last;
-        last = null;
-        return v;
+    public static String pollOutgoing() {
+        return outgoing.poll();
+    }
+
+    public static String peekIncoming() {
+        return incoming.peek();
+    }
+
+    public static String pollIncoming() {
+        return incoming.poll();
+    }
+
+    public static void drainIncoming() {
+        incoming.clear();
     }
 }
