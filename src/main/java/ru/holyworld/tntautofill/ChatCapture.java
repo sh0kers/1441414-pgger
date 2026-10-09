@@ -20,6 +20,7 @@ public class ChatCapture {
             return true;
         });
         ClientReceiveMessageEvents.GAME.register((message, overlay) -> {
+            if (overlay) return;
             incoming.add(message.getString());
         });
         ClientReceiveMessageEvents.CHAT.register((message, signed, sender, params, ts) -> {
@@ -29,10 +30,6 @@ public class ChatCapture {
 
     public static String pollOutgoing() {
         return outgoing.poll();
-    }
-
-    public static String peekIncoming() {
-        return incoming.peek();
     }
 
     public static String pollIncoming() {
