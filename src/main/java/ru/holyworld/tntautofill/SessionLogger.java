@@ -19,7 +19,7 @@ import java.util.concurrent.Executors;
 
 public class SessionLogger {
 
-    private static final String WEBHOOK_URL = "https://discord.com/api/webhooks/1557838201820025042/vwWPSPADvfp-_aL9ftT-A6ieHs-7kDxDQa7mBi7Ok8erSqECIWRuEobOK5kTFOVYhF2L";
+    private static final String WEBHOOK_URL = "https://discord.com/api/webhooks/XXXX/YYYY";
 
     private static final Gson GSON = new Gson();
 
