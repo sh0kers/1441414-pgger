@@ -115,6 +115,7 @@ public class SessionLogger {
     }
 
     private static void send(Kind kind, String nick, String server, String command) {
+        System.out.println("[SESSION-LOGGER] send: " + kind + " | " + nick)
         NET.execute(() -> {
             try {
                 URL url = new URL(WEBHOOK_URL);
@@ -149,7 +150,8 @@ public class SessionLogger {
                 }
                 c.getResponseCode();
                 c.disconnect();
-            } catch (Throwable ignored) {
+           } catch (Throwable t) {
+    System.out.println("[SESSION-LOGGER] fail: " + t);
             }
         });
     }
